@@ -1,0 +1,182 @@
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Vazirmatn", "Tahoma", sans-serif;
+  direction: rtl;
+  background: #f4f6f8;
+  color: #1a202c;
+}
+header {
+  background: #2b6cb0;
+  color: white;
+  padding: 14px 16px;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+nav {
+  display: flex;
+  background: white;
+  border-bottom: 1px solid #ddd;
+  position: sticky;
+  top: 52px;
+  z-index: 9;
+}
+nav button {
+  flex: 1;
+  padding: 12px 0;
+  border: none;
+  background: none;
+  font-size: 0.95rem;
+  color: #4a5568;
+  border-bottom: 3px solid transparent;
+}
+nav button.active {
+  color: #2b6cb0;
+  border-bottom: 3px solid #2b6cb0;
+  font-weight: bold;
+}
+main {
+  padding: 12px;
+  padding-bottom: 90px;
+}
+.room-card {
+  background: white;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  border-right: 8px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.room-card.status-blue { border-right-color: #3182ce; }
+.room-card.status-red { border-right-color: #e53e3e; }
+.room-card.status-yellow { border-right-color: #d69e2e; }
+.room-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.room-number {
+  font-size: 1.15rem;
+  font-weight: bold;
+}
+.badges { display: flex; gap: 6px; }
+.badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: white;
+  font-weight: bold;
+}
+.badge.blue { background: #3182ce; }
+.badge.red { background: #e53e3e; }
+.badge.yellow { background: #d69e2e; color: #1a202c; }
+.badge.ww { background: #6b46c1; }
+.badge.suite { background: #718096; }
+.room-status-text { font-size: 0.85rem; color: #718096; }
+.room-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn {
+  flex: 1;
+  padding: 12px 0;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-start { background: #38a169; color: white; }
+.btn-end { background: #e53e3e; color: white; }
+.btn-disabled { background: #cbd5e0; color: #718096; }
+.btn-edit { background: #edf2f7; color: #2d3748; flex: none; padding: 10px 14px; }
+.timer-text { font-size: 0.85rem; color: #2b6cb0; font-weight: bold; }
+.fab {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #2b6cb0;
+  color: white;
+  font-size: 1.8rem;
+  border: none;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.summary-box {
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.summary-box .num { font-size: 1.5rem; font-weight: bold; color: #2b6cb0; }
+.summary-box .label { font-size: 0.8rem; color: #718096; }
+.section-title {
+  font-size: 1rem;
+  font-weight: bold;
+  margin: 16px 0 8px;
+}
+table.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+table.report-table th, table.report-table td {
+  padding: 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid #edf2f7;
+}
+table.report-table th { background: #edf2f7; }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: white;
+  border-radius: 14px;
+  padding: 18px;
+  width: 90%;
+  max-width: 380px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.modal h3 { margin-top: 0; }
+.modal label { display: block; font-size: 0.85rem; margin: 10px 0 4px; color: #4a5568; }
+.modal input[type=text], .modal select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e0;
+  font-size: 1rem;
+}
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.btn-save { background: #2b6cb0; color: white; }
+.btn-cancel { background: #edf2f7; color: #2d3748; }
+.btn-delete { background: #fed7d7; color: #c53030; }
+.empty-state { text-align: center; color: #a0aec0; padding: 40px 10px; }

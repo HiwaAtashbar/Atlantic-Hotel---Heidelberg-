@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2b6cb0">
+<title>ثبت نظافت اتاق‌ها</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
+</head>
+<body>
+<header>ثبت نظافت اتاق‌ها</header>
+<nav>
+  <button id="tab-rooms" class="active">اتاق‌های امروز</button>
+  <button id="tab-daily">گزارش روزانه</button>
+  <button id="tab-monthly">گزارش ماهانه</button>
+</nav>
+
+<main id="view-rooms">
+  <div id="rooms-list"></div>
+</main>
+
+<main id="view-daily" style="display:none">
+  <div class="summary-grid" id="daily-summary"></div>
+  <div class="section-title">جزئیات اتاق‌های امروز</div>
+  <table class="report-table" id="daily-table">
+    <thead><tr><th>اتاق</th><th>وضعیت</th><th>شروع</th><th>پایان</th><th>مدت (دقیقه)</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<main id="view-monthly" style="display:none">
+  <div class="summary-grid" id="monthly-summary"></div>
+  <div class="section-title">تفکیک روزانه این ماه</div>
+  <table class="report-table" id="monthly-table">
+    <thead><tr><th>تاریخ</th><th>تعداد اتاق</th><th>مجموع دقیقه</th><th>میانگین دقیقه</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<button class="fab" id="add-room-btn">＋</button>
+
+<div id="modal-root"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
