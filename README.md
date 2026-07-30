@@ -1,39 +1,54 @@
-# اپلیکیشن ثبت نظافت اتاق‌های هتل (PWA)
+# Reinigungsplaner
 
-## نصب روی گوشی پیکسل ۱۰ پرو
+Eine einfache Progressive Web App (PWA) zur täglichen Erfassung der Zimmerreinigung im Hotel. Läuft komplett offline auf dem Smartphone (getestet für Google Pixel 10 Pro), speichert alle Daten lokal im Browser und benötigt keinen Server.
 
-1. تمام فایل‌های این پوشه را در یک ریپوی GitHub آپلود کنید (یا از GitHub Pages / Netlify / هر هاست استاتیک رایگان استفاده کنید).
-2. آدرس منتشرشده را در Chrome روی گوشی باز کنید.
-3. از منوی سه‌نقطه Chrome گزینه "Add to Home screen" را انتخاب کنید.
-4. آیکون اپلیکیشن روی صفحه اصلی گوشی ظاهر می‌شود و مثل یک اپ واقعی (بدون نوار آدرس مرورگر) باز می‌شود.
-5. اپلیکیشن کاملاً آفلاین کار می‌کند؛ داده‌ها با IndexedDB مستقیماً روی گوشی ذخیره می‌شوند.
+## Funktionen
 
-## ساختار فایل‌ها
+- **Nur Zimmer des aktuellen Tages** werden auf der Startseite angezeigt. Mit den Pfeilen ◀ ▶ oben kann man zwischen Tagen navigieren; ein Klick auf "Heute" springt sofort zurück zum aktuellen Tag.
+- **Drei Zimmerstatus** mit Farbcode:
+  - 🔵 **Blau** – Abreise, Zimmer bereits neu vermietet (höchste Priorität)
+  - 🔴 **Rot** – Abreise, Zimmer noch nicht vermietet
+  - 🟡 **Gelb** – Gast bleibt (Aufenthalt/Stayover)
+- **WW-Kennzeichnung** für Zimmer mit komplettem Wäschewechsel (violette Umrandung der Karte).
+- **Doppelzimmer-Suiten**: Ein Zimmer kann als Teil einer Suite markiert werden (mit optionaler zweiter Zimmernummer).
+- **Start/Ende-Erfassung**: Für jedes Zimmer wird per Klick Start- und Endzeit der Reinigung erfasst; während der Reinigung läuft ein Live-Timer (mm:ss).
+- **Arbeitszeit (Kommen/Gehen)**: Ein-/Ausstempeln der Schicht mit automatischer Berechnung der Gesamtarbeitszeit.
+- **Tages-, Monats- und Jahresbericht**: Anzahl gereinigter Zimmer, Gesamtzeit, Durchschnittszeit pro Zimmer, Aufschlüsselung nach Farbkategorie (inkl. WW) sowie berechneter Verdienst.
+- **Verdienstberechnung**:
+  - **5,00 € pro normalem Zimmer**
+  - **6,50 € pro Doppelzimmer-Suite** (die Suite wird als eine Einheit gezählt, nicht doppelt)
+  - Beide Beträge können jederzeit unter dem Zahnrad-Symbol ⚙️ (Einstellungen) angepasst werden.
+- **Sperre des Tages**: Nach Schichtende kann der Tag über das Schloss-Symbol 🔒 gesperrt werden; danach sind Start/Ende, Hinzufügen und Bearbeiten deaktiviert. Über den Link "Bearbeitung entsperren" im gelben Banner kann bei Bedarf wieder freigeschaltet werden. Jeder Tag hat seinen eigenen Sperrstatus – ein neuer Tag ist automatisch entsperrt.
+- **Duplikat-Schutz**: Dieselbe Zimmernummer kann nicht zweimal am selben Tag angelegt werden.
+- **Datensicherung**: Unter Einstellungen ⚙️ können alle Daten als JSON-Datei exportiert (heruntergeladen) und später wieder importiert werden.
+- **Offline-fähig**: Durch den Service Worker funktioniert die App auch ohne Internetverbindung, sobald sie einmal geladen wurde.
 
-- index.html : ساختار صفحات (اتاق‌های امروز / گزارش روزانه / گزارش ماهانه)
-- app.js : کل منطق برنامه (دیتابیس، رندر، دکمه‌های شروع/پایان، گزارش‌ها)
-- styles.css : ظاهر و رنگ‌بندی
-- manifest.json : تنظیمات نصب PWA
-- sw.js : Service Worker برای کارکرد آفلاین
-- icon-192.png / icon-512.png : آیکون‌های نمونه (می‌توانید با آیکون دلخواه جایگزین کنید)
+## Installation auf GitHub Pages
 
-## نحوه استفاده روزانه
+1. Alle Dateien dieses Ordners in ein **öffentliches (Public)** GitHub-Repository hochladen.
+2. Im Repository zu **Settings → Pages** gehen.
+3. Unter **Branch** die Option **main** und den Ordner **/ (root)** auswählen, dann **Save** klicken.
+4. Nach ein bis zwei Minuten zeigt GitHub den Link zur Live-Seite an (z. B. `https://benutzername.github.io/repositoryname/`).
 
-1. با دکمه + (پایین چپ) اتاق‌های تخصیص‌یافته امروز را اضافه کنید: شماره اتاق، وضعیت رنگی (آبی/قرمز/زرد)، پرچم WW در صورت نیاز، و کد سوییت در صورتی که اتاق بخشی از یک سوییت دو‌اتاقه است.
-2. اتاق‌ها به‌ترتیب اولویت مرتب می‌شوند (آبی اول).
-3. با کلیک "شروع نظافت" ساعت شروع ثبت می‌شود و دکمه به "پایان نظافت" تبدیل می‌شود.
-4. با کلیک "پایان نظافت" ساعت پایان و مدت‌زمان دقیق ثبت می‌شود.
-5. در تب "گزارش روزانه" خلاصه امروز (تعداد اتاق، مجموع زمان، میانگین، تعداد WW) و جزئیات هر اتاق دیده می‌شود.
-6. در تب "گزارش ماهانه" مجموع از ابتدای ماه جاری، به‌همراه تفکیک روز‌به‌روز نمایش داده می‌شود.
+## Installation auf dem Smartphone (Google Pixel 10 Pro)
 
-## ویرایش / اضافه کردن آیتم‌های جدید
+1. Den Link der Seite in Chrome öffnen.
+2. Über das Drei-Punkte-Menü **"Zum Startbildschirm hinzufügen"** auswählen.
+3. Die App erscheint danach wie eine normale App auf dem Startbildschirm und lässt sich offline nutzen.
 
-برای اضافه کردن یک وضعیت رنگی جدید (مثلاً یک رنگ دیگر در آینده)، فقط کافی‌ست آبجکت STATUS_CONFIG در ابتدای فایل app.js را ویرایش کنید و همچنین یک option جدید به select در تابع openRoomModal در همان فایل اضافه کنید. تمام رنگ‌بندی‌های CSS مربوطه در styles.css با نام کلاس‌های status-blue / status-red / status-yellow تعریف شده‌اند که می‌توانید کلاس جدید اضافه کنید.
+## Anpassung / Erweiterung
 
-هر اتاق و هر رکورد نظافت را می‌توانید از طریق دکمه "ویرایش" در هر کارت اتاق، ویرایش یا حذف کنید.
+- Alle Statusfarben und Bezeichnungen befinden sich zentral in der Konstante `STATUS_CONFIG` am Anfang von `app.js` – neue Kategorien lassen sich dort einfach ergänzen.
+- Die Lohnsätze (`wageNormal` = 5,00 € und `wageSuite` = 6,50 €) lassen sich direkt in der App über **Einstellungen ⚙️** ändern, ohne den Code zu bearbeiten.
+- Alle Daten werden im `localStorage` des Browsers gespeichert (Schlüssel beginnend mit `clean_`). Über die Export-Funktion lässt sich jederzeit eine Sicherungskopie als JSON-Datei erstellen.
 
-## نکات فنی
+## Dateien
 
-- داده‌ها فقط روی همان گوشی ذخیره می‌شوند (IndexedDB). اگر گوشی را عوض کنید یا مرورگر را پاک کنید، داده از دست می‌رود؛ برای پشتیبان‌گیری می‌توانید بعداً یک قابلیت Export/Import JSON یا اتصال به Google Sheets از طریق Google Apps Script اضافه کنید.
-- برای نصب واقعی (Add to Home Screen)، سایت باید روی HTTPS میزبانی شود؛ GitHub Pages به‌صورت رایگان HTTPS می‌دهد.
-- کد کاملاً به زبان JavaScript خام (vanilla) نوشته شده تا سبک، سریع و بدون نیاز به build tool بماند؛ در آینده در صورت رشد پروژه به‌راحتی قابل تبدیل به React است.
+| Datei | Zweck |
+|---|---|
+| `index.html` | Struktur der App (Seiten, Modale) |
+| `styles.css` | Gesamtes Design und Layout |
+| `app.js` | Anwendungslogik, Datenspeicherung, Berichte |
+| `manifest.json` | PWA-Konfiguration (Name, Icons, Startmodus) |
+| `sw.js` | Service Worker für Offline-Funktion |
+| `icon-192.png`, `icon-512.png` | App-Icons |

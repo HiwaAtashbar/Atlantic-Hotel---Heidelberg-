@@ -1,313 +1,825 @@
+/* ============================================================
+   Reinigungsplaner – Hotelzimmer-Reinigungs-App (PWA)
+   Alle Daten werden lokal im Browser (localStorage) gespeichert.
+   ============================================================ */
 
-// ---------- Database (IndexedDB via Dexie) ----------
-const db = new Dexie("HotelCleaningDB");
-db.version(1).stores({
-  rooms: "++id, date, roomNumber, status",
-  logs: "++id, roomId, date, startTime, endTime"
-});
-
-// Room status config - EDIT HERE to add/remove/change statuses
-const STATUS_CONFIG = {
-  blue:   { label: "چک‌اوت + رزرو جدید (اولویت ۱)", cssClass: "status-blue",   badgeClass: "blue",   priority: 1 },
-  red:    { label: "چک‌اوت بدون رزرو",              cssClass: "status-red",    badgeClass: "red",    priority: 2 },
-  yellow: { label: "مقیم (می‌ماند)",                 cssClass: "status-yellow", badgeClass: "yellow", priority: 3 }
+const STORE_KEYS = {
+  rooms: "clean_rooms_v1",
+  shifts: "clean_shifts_v1",
+  locks: "clean_locks_v1",
+  settings: "clean_settings_v1"
 };
 
+const DEFAULT_SETTINGS = {
+  wageNormal: 5.0,   // Lohn pro normalem Zimmer (€)
+  wageSuite: 6.5     // Lohn pro Doppelzimmer-Suite (€)
+};
+
+const STATUS_CONFIG = {
+  blue:   { label: "Abreise – neu vermietet", short: "Blau", cssClass: "status-blue" },
+  red:    { label: "Abreise – nicht vermietet", short: "Rot", cssClass: "status-red" },
+  yellow: { label: "Bleibt (Aufenthalt)", short: "Gelb", cssClass: "status-yellow" }
+};
+
+const STATUS_ORDER = ["blue", "red", "yellow"];
+
+/* ---------- State ---------- */
+let state = {
+  currentDate: todayStr(),
+  activeTab: "rooms",
+  editingRoomId: null,
+  timerInterval: null
+};
+
+/* ---------- Storage helpers ---------- */
+function loadAll(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+function saveAll(key, data) {
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
+function getRooms() { return loadAll(STORE_KEYS.rooms, []); }
+function setRooms(rooms) { saveAll(STORE_KEYS.rooms, rooms); }
+
+function getShifts() { return loadAll(STORE_KEYS.shifts, []); }
+function setShifts(shifts) { saveAll(STORE_KEYS.shifts, shifts); }
+
+function getLocks() { return loadAll(STORE_KEYS.locks, []); }
+function setLocks(locks) { saveAll(STORE_KEYS.locks, locks); }
+
+function getSettings() { return loadAll(STORE_KEYS.settings, { ...DEFAULT_SETTINGS }); }
+function setSettings(s) { saveAll(STORE_KEYS.settings, s); }
+
+/* ---------- Date helpers ---------- */
 function todayStr() {
   const d = new Date();
-  return d.toISOString().slice(0,10); // YYYY-MM-DD
+  return formatDateKey(d);
+}
+function formatDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function parseDateKey(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function shiftDate(key, days) {
+  const d = parseDateKey(key);
+  d.setDate(d.getDate() + days);
+  return formatDateKey(d);
+}
+function formatDateLabel(key) {
+  const d = parseDateKey(key);
+  const opts = { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" };
+  let label = d.toLocaleDateString("de-DE", opts);
+  if (key === todayStr()) label = "Heute · " + label;
+  return label;
+}
+function formatTime(ts) {
+  if (!ts) return "–";
+  const d = new Date(ts);
+  return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+}
+function formatDuration(ms) {
+  if (ms == null || ms < 0) return "–";
+  const totalMinutes = Math.floor(ms / 60000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0) return `${h} Std ${m} Min`;
+  return `${m} Min`;
+}
+function formatMMSS(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function uuid() {
+  return "id-" + Date.now() + "-" + Math.random().toString(36).slice(2, 9);
 }
 
-function nowTimeStr() {
-  const d = new Date();
-  return d.toTimeString().slice(0,8); // HH:MM:SS
+/* ---------- Lock helpers ---------- */
+function isDayLocked(dateKey) {
+  const locks = getLocks();
+  const entry = locks.find(l => l.date === dateKey);
+  return entry ? entry.locked : false;
+}
+function setDayLocked(dateKey, locked) {
+  const locks = getLocks();
+  const idx = locks.findIndex(l => l.date === dateKey);
+  if (idx >= 0) locks[idx].locked = locked;
+  else locks.push({ date: dateKey, locked });
+  setLocks(locks);
 }
 
-function fmtDuration(mins) {
-  if (mins == null) return "-";
-  const h = Math.floor(mins/60);
-  const m = Math.round(mins%60);
-  return h > 0 ? `${h}س ${m}د` : `${m}د`;
+/* ---------- Toast ---------- */
+let toastTimeout = null;
+function showToast(msg) {
+  const toast = document.getElementById("toast");
+  toast.textContent = msg;
+  toast.classList.remove("hidden");
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.add("hidden"), 2500);
 }
 
-// ---------- State ----------
-let currentTab = "rooms";
-let editingRoomId = null;
+/* ============================================================
+   RENDER: Header / Date navigation / Lock banner
+   ============================================================ */
+function renderHeader() {
+  document.getElementById("currentDateLabel").textContent = formatDateLabel(state.currentDate);
+  const locked = isDayLocked(state.currentDate);
+  document.getElementById("btnLock").textContent = locked ? "🔒" : "🔓";
+  const banner = document.getElementById("lockBanner");
+  banner.classList.toggle("hidden", !locked);
+  document.getElementById("btnAddRoom").classList.toggle("hidden", locked || state.activeTab !== "rooms");
+}
 
-// ---------- Navigation ----------
-const tabs = {
-  rooms: document.getElementById("tab-rooms"),
-  daily: document.getElementById("tab-daily"),
-  monthly: document.getElementById("tab-monthly")
-};
-const views = {
-  rooms: document.getElementById("view-rooms"),
-  daily: document.getElementById("view-daily"),
-  monthly: document.getElementById("view-monthly")
-};
+/* ============================================================
+   RENDER: Shift / Arbeitszeit card
+   ============================================================ */
+function getShiftForDate(dateKey) {
+  const shifts = getShifts();
+  return shifts.find(s => s.date === dateKey) || null;
+}
+function saveShift(dateKey, patch) {
+  const shifts = getShifts();
+  let entry = shifts.find(s => s.date === dateKey);
+  if (!entry) {
+    entry = { date: dateKey, kommen: null, gehen: null };
+    shifts.push(entry);
+  }
+  Object.assign(entry, patch);
+  setShifts(shifts);
+}
 
-function switchTab(name) {
-  currentTab = name;
-  Object.keys(tabs).forEach(k => {
-    tabs[k].classList.toggle("active", k === name);
-    views[k].style.display = k === name ? "block" : "none";
+function renderShift() {
+  const shift = getShiftForDate(state.currentDate);
+  const locked = isDayLocked(state.currentDate);
+  const btnKommen = document.getElementById("btnKommen");
+  const btnGehen = document.getElementById("btnGehen");
+  const info = document.getElementById("shiftInfo");
+
+  const kommen = shift?.kommen || null;
+  const gehen = shift?.gehen || null;
+
+  btnKommen.disabled = locked || !!kommen;
+  btnGehen.disabled = locked || !kommen || !!gehen;
+
+  if (!kommen) {
+    info.textContent = "Noch nicht eingestempelt.";
+  } else if (kommen && !gehen) {
+    info.textContent = `Kommen: ${formatTime(kommen)} · Schicht läuft…`;
+  } else {
+    info.textContent = `Kommen: ${formatTime(kommen)}  ·  Gehen: ${formatTime(gehen)}  ·  Dauer: ${formatDuration(gehen - kommen)}`;
+  }
+}
+
+/* ============================================================
+   RENDER: Room list
+   ============================================================ */
+function getRoomsForDate(dateKey) {
+  return getRooms().filter(r => r.date === dateKey);
+}
+
+function sortRooms(rooms) {
+  return [...rooms].sort((a, b) => {
+    const oa = STATUS_ORDER.indexOf(a.status);
+    const ob = STATUS_ORDER.indexOf(b.status);
+    if (oa !== ob) return oa - ob;
+    if (a.ww !== b.ww) return a.ww ? -1 : 1;
+    return a.number.localeCompare(b.number, "de", { numeric: true });
   });
-  if (name === "rooms") renderRooms();
-  if (name === "daily") renderDaily();
-  if (name === "monthly") renderMonthly();
 }
-tabs.rooms.onclick = () => switchTab("rooms");
-tabs.daily.onclick = () => switchTab("daily");
-tabs.monthly.onclick = () => switchTab("monthly");
 
-// ---------- Rooms list rendering ----------
-async function renderRooms() {
-  const date = todayStr();
-  const rooms = await db.rooms.where("date").equals(date).toArray();
-  rooms.sort((a,b) => STATUS_CONFIG[a.status].priority - STATUS_CONFIG[b.status].priority);
+function renderRoomList() {
+  const rooms = sortRooms(getRoomsForDate(state.currentDate));
+  const list = document.getElementById("roomList");
+  const empty = document.getElementById("emptyState");
+  const locked = isDayLocked(state.currentDate);
 
-  const container = document.getElementById("rooms-list");
-  container.innerHTML = "";
+  document.getElementById("roomCount").textContent = `${rooms.length} Zimmer`;
 
+  list.innerHTML = "";
   if (rooms.length === 0) {
-    container.innerHTML = `<div class="empty-state">هنوز اتاقی برای امروز اضافه نشده است.<br>با دکمه + یک اتاق اضافه کنید.</div>`;
-    return;
+    empty.classList.remove("hidden");
+  } else {
+    empty.classList.add("hidden");
   }
 
-  for (const room of rooms) {
-    const logs = await db.logs.where("roomId").equals(room.id).toArray();
-    const activeLog = logs.find(l => !l.endTime);
-    const finishedLog = logs.find(l => l.endTime);
-
+  rooms.forEach(room => {
     const card = document.createElement("div");
-    card.className = `room-card ${STATUS_CONFIG[room.status].cssClass}`;
+    card.className = `room-card ${STATUS_CONFIG[room.status].cssClass} ${room.ww ? "ww" : ""}`;
+    card.dataset.id = room.id;
 
-    const badgesHtml = `
-      <span class="badge ${STATUS_CONFIG[room.status].badgeClass}">${STATUS_CONFIG[room.status].label}</span>
-      ${room.isWW ? '<span class="badge ww">WW</span>' : ''}
-      ${room.suiteGroup ? `<span class="badge suite">سوییت ${room.suiteGroup}</span>` : ''}
-    `;
+    const badges = [];
+    if (room.isSuite) badges.push(`<span class="badge suite">Suite${room.suitePartner ? " · " + room.suitePartner : ""}</span>`);
+    if (room.ww) badges.push(`<span class="badge ww">WW</span>`);
+    badges.push(`<span class="badge">${STATUS_CONFIG[room.status].short}</span>`);
 
-    let statusText = "شروع نشده";
-    let actionHtml = `<button class="btn btn-start" data-action="start" data-id="${room.id}">شروع نظافت</button>`;
+    let actionHtml = "";
+    if (!room.startTime) {
+      actionHtml = `<button class="room-action-btn start" data-action="start" ${locked ? "disabled" : ""}>Start</button>`;
+    } else if (room.startTime && !room.endTime) {
+      actionHtml = `<button class="room-action-btn end" data-action="end" ${locked ? "disabled" : ""}>Ende</button>`;
+    } else {
+      actionHtml = `<button class="room-action-btn done" disabled>Fertig</button>`;
+    }
 
-    if (activeLog) {
-      statusText = `در حال نظافت از ساعت ${activeLog.startTime}`;
-      actionHtml = `<button class="btn btn-end" data-action="end" data-id="${room.id}" data-log="${activeLog.id}">پایان نظافت</button>`;
-    } else if (finishedLog) {
-      const mins = finishedLog.durationMinutes;
-      statusText = `تکمیل شد | ${finishedLog.startTime} تا ${finishedLog.endTime} (${fmtDuration(mins)})`;
-      actionHtml = `<button class="btn btn-disabled" disabled>نظافت انجام شد ✓</button>`;
+    let timerHtml = "";
+    if (room.startTime && !room.endTime) {
+      timerHtml = `<span class="room-timer running" data-timer-start="${room.startTime}">00:00</span>`;
+    } else if (room.startTime && room.endTime) {
+      timerHtml = `<span class="room-timer">${formatDuration(room.endTime - room.startTime)}</span>`;
+    } else {
+      timerHtml = `<span class="room-timer">–</span>`;
     }
 
     card.innerHTML = `
       <div class="room-top">
-        <div class="room-number">اتاق ${room.roomNumber}</div>
-        <div class="badges">${badgesHtml}</div>
+        <div>
+          <div class="room-number">${escapeHtml(room.number)}</div>
+          <div class="room-badges">${badges.join("")}</div>
+        </div>
+        <button class="room-edit-btn" data-action="edit" title="Bearbeiten">✏️</button>
       </div>
-      <div class="room-status-text">${statusText}</div>
-      <div class="room-actions">
+      <div class="room-bottom">
+        ${timerHtml}
         ${actionHtml}
-        <button class="btn btn-edit" data-action="edit" data-id="${room.id}">ویرایش</button>
       </div>
     `;
-    container.appendChild(card);
-  }
+    list.appendChild(card);
+  });
+
+  updateFabVisibility();
 }
 
-document.getElementById("rooms-list").addEventListener("click", async (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-  const action = btn.dataset.action;
-  const roomId = Number(btn.dataset.id);
+function updateFabVisibility() {
+  const locked = isDayLocked(state.currentDate);
+  document.getElementById("btnAddRoom").classList.toggle("hidden", locked || state.activeTab !== "rooms");
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* ---------- Live timer tick ---------- */
+function startTimerLoop() {
+  if (state.timerInterval) clearInterval(state.timerInterval);
+  state.timerInterval = setInterval(() => {
+    document.querySelectorAll(".room-timer.running").forEach(el => {
+      const start = Number(el.dataset.timerStart);
+      el.textContent = formatMMSS(Date.now() - start);
+    });
+  }, 1000);
+}
+
+/* ============================================================
+   Room CRUD
+   ============================================================ */
+function findRoom(id) {
+  return getRooms().find(r => r.id === id);
+}
+
+function roomNumberExistsOnDate(number, dateKey, excludeId) {
+  return getRooms().some(r => r.date === dateKey && r.number === number && r.id !== excludeId);
+}
+
+function openRoomModal(roomId = null) {
+  state.editingRoomId = roomId;
+  const modal = document.getElementById("roomModal");
+  const title = document.getElementById("roomModalTitle");
+  const numberInput = document.getElementById("inputRoomNumber");
+  const statusInput = document.getElementById("inputStatus");
+  const wwInput = document.getElementById("inputWW");
+  const suiteInput = document.getElementById("inputIsSuite");
+  const suitePartnerInput = document.getElementById("inputSuitePartner");
+  const deleteBtn = document.getElementById("btnDeleteRoom");
+
+  if (roomId) {
+    const room = findRoom(roomId);
+    title.textContent = "Zimmer bearbeiten";
+    numberInput.value = room.number;
+    statusInput.value = room.status;
+    wwInput.checked = !!room.ww;
+    suiteInput.checked = !!room.isSuite;
+    suitePartnerInput.value = room.suitePartner || "";
+    deleteBtn.classList.remove("hidden");
+  } else {
+    title.textContent = "Zimmer hinzufügen";
+    numberInput.value = "";
+    statusInput.value = "blue";
+    wwInput.checked = false;
+    suiteInput.checked = false;
+    suitePartnerInput.value = "";
+    deleteBtn.classList.add("hidden");
+  }
+  toggleSuitePartnerField();
+  modal.classList.remove("hidden");
+  numberInput.focus();
+}
+
+function closeRoomModal() {
+  document.getElementById("roomModal").classList.add("hidden");
+  state.editingRoomId = null;
+}
+
+function toggleSuitePartnerField() {
+  const isSuite = document.getElementById("inputIsSuite").checked;
+  document.getElementById("suitePartnerWrap").classList.toggle("hidden", !isSuite);
+}
+
+function saveRoomFromModal() {
+  const number = document.getElementById("inputRoomNumber").value.trim();
+  const status = document.getElementById("inputStatus").value;
+  const ww = document.getElementById("inputWW").checked;
+  const isSuite = document.getElementById("inputIsSuite").checked;
+  const suitePartner = document.getElementById("inputSuitePartner").value.trim();
+
+  if (!number) {
+    showToast("Bitte eine Zimmernummer eingeben.");
+    return;
+  }
+
+  if (roomNumberExistsOnDate(number, state.currentDate, state.editingRoomId)) {
+    showToast(`Zimmer ${number} ist für diesen Tag bereits eingetragen.`);
+    return;
+  }
+
+  const rooms = getRooms();
+
+  if (state.editingRoomId) {
+    const room = rooms.find(r => r.id === state.editingRoomId);
+    room.number = number;
+    room.status = status;
+    room.ww = ww;
+    room.isSuite = isSuite;
+    room.suitePartner = isSuite ? suitePartner : "";
+    if (isSuite && !room.suiteGroup) room.suiteGroup = uuid();
+    if (!isSuite) room.suiteGroup = null;
+  } else {
+    rooms.push({
+      id: uuid(),
+      number,
+      date: state.currentDate,
+      status,
+      ww,
+      isSuite,
+      suitePartner: isSuite ? suitePartner : "",
+      suiteGroup: isSuite ? uuid() : null,
+      startTime: null,
+      endTime: null,
+      createdAt: Date.now()
+    });
+  }
+
+  setRooms(rooms);
+  closeRoomModal();
+  renderRoomList();
+  showToast("Gespeichert.");
+}
+
+function deleteRoomFromModal() {
+  if (!state.editingRoomId) return;
+  const rooms = getRooms().filter(r => r.id !== state.editingRoomId);
+  setRooms(rooms);
+  closeRoomModal();
+  renderRoomList();
+  showToast("Zimmer gelöscht.");
+}
+
+function handleRoomAction(id, action) {
+  const rooms = getRooms();
+  const room = rooms.find(r => r.id === id);
+  if (!room) return;
+  if (isDayLocked(state.currentDate)) return;
 
   if (action === "start") {
-    await db.logs.add({
-      roomId,
-      date: todayStr(),
-      startTime: nowTimeStr(),
-      endTime: null,
-      durationMinutes: null
-    });
-    renderRooms();
+    room.startTime = Date.now();
   } else if (action === "end") {
-    const logId = Number(btn.dataset.log);
-    const log = await db.logs.get(logId);
-    const endTime = nowTimeStr();
-    const [sh, sm, ss] = log.startTime.split(":").map(Number);
-    const [eh, em, es] = endTime.split(":").map(Number);
-    const durationMinutes = ((eh*3600+em*60+es) - (sh*3600+sm*60+ss)) / 60;
-    await db.logs.update(logId, { endTime, durationMinutes });
-    renderRooms();
+    room.endTime = Date.now();
   } else if (action === "edit") {
-    openRoomModal(roomId);
+    openRoomModal(id);
+    return;
   }
-});
+  setRooms(rooms);
+  renderRoomList();
+}
 
-// ---------- Add / Edit Room Modal ----------
-document.getElementById("add-room-btn").onclick = () => openRoomModal(null);
+/* ============================================================
+   REPORTS: Statistics engine
+   ============================================================ */
+function computeStatsForRooms(rooms) {
+  const settings = getSettings();
+  const completed = rooms.filter(r => r.startTime && r.endTime);
 
-async function openRoomModal(roomId) {
-  editingRoomId = roomId;
-  let room = { roomNumber: "", status: "yellow", isWW: false, suiteGroup: "" };
-  if (roomId) {
-    room = await db.rooms.get(roomId);
-  }
+  const totalRooms = rooms.length;
+  const totalCleaned = completed.length;
+  const totalMs = completed.reduce((sum, r) => sum + (r.endTime - r.startTime), 0);
+  const avgMs = totalCleaned > 0 ? totalMs / totalCleaned : 0;
 
-  const modalRoot = document.getElementById("modal-root");
-  modalRoot.innerHTML = `
-    <div class="modal-overlay" id="modal-overlay">
-      <div class="modal">
-        <h3>${roomId ? "ویرایش اتاق" : "افزودن اتاق جدید"}</h3>
-        <label>شماره اتاق</label>
-        <input type="text" id="input-room-number" value="${room.roomNumber}" placeholder="مثال: 214">
+  // Category breakdown
+  const categories = {};
+  STATUS_ORDER.forEach(key => {
+    categories[key] = { count: 0, cleaned: 0, totalMs: 0 };
+  });
+  categories.ww = { count: 0, cleaned: 0, totalMs: 0 };
 
-        <label>وضعیت اتاق</label>
-        <select id="input-status">
-          <option value="blue" ${room.status==="blue"?"selected":""}>آبی - چک‌اوت + رزرو جدید (اولویت ۱)</option>
-          <option value="red" ${room.status==="red"?"selected":""}>قرمز - چک‌اوت بدون رزرو</option>
-          <option value="yellow" ${room.status==="yellow"?"selected":""}>زرد - مقیم (می‌ماند)</option>
-        </select>
+  rooms.forEach(r => {
+    categories[r.status].count++;
+    if (r.startTime && r.endTime) {
+      categories[r.status].cleaned++;
+      categories[r.status].totalMs += (r.endTime - r.startTime);
+    }
+    if (r.ww) {
+      categories.ww.count++;
+      if (r.startTime && r.endTime) {
+        categories.ww.cleaned++;
+        categories.ww.totalMs += (r.endTime - r.startTime);
+      }
+    }
+  });
 
-        <div class="checkbox-row">
-          <input type="checkbox" id="input-ww" ${room.isWW?"checked":""}>
-          <label style="margin:0">WW (تعویض کامل ملحفه و حوله)</label>
-        </div>
+  // Income: normal rooms counted individually; suite rooms counted once per suiteGroup
+  const seenSuiteGroups = new Set();
+  let income = 0;
+  let suiteCount = 0;
+  let normalCount = 0;
+  rooms.forEach(r => {
+    if (r.isSuite) {
+      const groupKey = r.suiteGroup || r.id;
+      if (!seenSuiteGroups.has(groupKey)) {
+        seenSuiteGroups.add(groupKey);
+        income += settings.wageSuite;
+        suiteCount++;
+      }
+    } else {
+      income += settings.wageNormal;
+      normalCount++;
+    }
+  });
 
-        <label>گروه سوییت (اختیاری - برای اتاق‌های دو‌اتاقه)</label>
-        <input type="text" id="input-suite" value="${room.suiteGroup||""}" placeholder="مثال: A1 (خالی بگذارید اگر سوییت نیست)">
+  return {
+    totalRooms, totalCleaned, totalMs, avgMs,
+    categories, income, suiteCount, normalCount
+  };
+}
 
-        <div class="modal-actions">
-          <button class="btn btn-cancel" id="modal-cancel">انصراف</button>
-          ${roomId ? '<button class="btn btn-delete" id="modal-delete">حذف</button>' : ''}
-          <button class="btn btn-save" id="modal-save">ذخیره</button>
-        </div>
+function renderCategoryTable(categories) {
+  const rows = STATUS_ORDER.map(key => {
+    const c = categories[key];
+    const avg = c.cleaned > 0 ? c.totalMs / c.cleaned : 0;
+    return `<tr>
+      <td><span class="dot ${key}"></span>${STATUS_CONFIG[key].short}</td>
+      <td>${c.count}</td>
+      <td>${c.cleaned}</td>
+      <td>${c.cleaned > 0 ? formatDuration(avg) : "–"}</td>
+    </tr>`;
+  }).join("");
+  const ww = categories.ww;
+  const wwAvg = ww.cleaned > 0 ? ww.totalMs / ww.cleaned : 0;
+  const wwRow = `<tr>
+    <td><span class="dot ww"></span>WW</td>
+    <td>${ww.count}</td>
+    <td>${ww.cleaned}</td>
+    <td>${ww.cleaned > 0 ? formatDuration(wwAvg) : "–"}</td>
+  </tr>`;
+
+  return `<table class="report-table">
+    <thead><tr><th>Kategorie</th><th>Anzahl</th><th>Erledigt</th><th>Ø Zeit</th></tr></thead>
+    <tbody>${rows}${wwRow}</tbody>
+  </table>`;
+}
+
+function statBoxes(stats) {
+  return `<div class="stat-grid">
+    <div class="stat-box"><div class="stat-value">${stats.totalCleaned}/${stats.totalRooms}</div><div class="stat-label">Zimmer erledigt</div></div>
+    <div class="stat-box"><div class="stat-value">${formatDuration(stats.totalMs)}</div><div class="stat-label">Gesamtzeit</div></div>
+    <div class="stat-box"><div class="stat-value">${stats.totalCleaned > 0 ? formatDuration(stats.avgMs) : "–"}</div><div class="stat-label">Ø Zeit / Zimmer</div></div>
+    <div class="stat-box"><div class="stat-value">${stats.income.toFixed(2)} €</div><div class="stat-label">Verdienst</div></div>
+  </div>`;
+}
+
+/* ---------- Day report ---------- */
+function renderDayReport() {
+  const rooms = getRoomsForDate(state.currentDate);
+  const stats = computeStatsForRooms(rooms);
+  return `
+    <div class="report-card">
+      <h3>Tagesbericht – ${formatDateLabel(state.currentDate)}</h3>
+      ${statBoxes(stats)}
+      <div style="font-size:13px;color:var(--muted);margin-top:6px;">
+        ${stats.normalCount} normale Zimmer × ${getSettings().wageNormal.toFixed(2)} € · ${stats.suiteCount} Suite(n) × ${getSettings().wageSuite.toFixed(2)} €
       </div>
+      ${renderCategoryTable(stats.categories)}
     </div>
   `;
-
-  document.getElementById("modal-cancel").onclick = closeModal;
-  document.getElementById("modal-overlay").onclick = (e) => {
-    if (e.target.id === "modal-overlay") closeModal();
-  };
-  if (roomId) {
-    document.getElementById("modal-delete").onclick = async () => {
-      await db.rooms.delete(roomId);
-      await db.logs.where("roomId").equals(roomId).delete();
-      closeModal();
-      renderRooms();
-    };
-  }
-  document.getElementById("modal-save").onclick = async () => {
-    const roomNumber = document.getElementById("input-room-number").value.trim();
-    const status = document.getElementById("input-status").value;
-    const isWW = document.getElementById("input-ww").checked;
-    const suiteGroup = document.getElementById("input-suite").value.trim();
-    if (!roomNumber) { alert("لطفا شماره اتاق را وارد کنید"); return; }
-
-    const data = { roomNumber, status, isWW, suiteGroup, date: todayStr() };
-    if (roomId) {
-      await db.rooms.update(roomId, data);
-    } else {
-      await db.rooms.add(data);
-    }
-    closeModal();
-    renderRooms();
-  };
 }
 
-function closeModal() {
-  document.getElementById("modal-root").innerHTML = "";
-  editingRoomId = null;
-}
+/* ---------- Month report ---------- */
+function renderMonthReport() {
+  const d = parseDateKey(state.currentDate);
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const monthLabel = d.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 
-// ---------- Daily report ----------
-async function renderDaily() {
-  const date = todayStr();
-  const rooms = await db.rooms.where("date").equals(date).toArray();
-  const logs = await db.logs.where("date").equals(date).toArray();
+  const allRooms = getRooms().filter(r => {
+    const rd = parseDateKey(r.date);
+    return rd.getFullYear() === year && rd.getMonth() === month;
+  });
 
-  const finished = logs.filter(l => l.endTime);
-  const totalMinutes = finished.reduce((s,l) => s + l.durationMinutes, 0);
-  const avgMinutes = finished.length ? totalMinutes / finished.length : 0;
-  const wwCount = rooms.filter(r => r.isWW).length;
+  const stats = computeStatsForRooms(allRooms);
 
-  document.getElementById("daily-summary").innerHTML = `
-    <div class="summary-box"><div class="num">${finished.length}/${rooms.length}</div><div class="label">اتاق تمیز شده</div></div>
-    <div class="summary-box"><div class="num">${fmtDuration(totalMinutes)}</div><div class="label">مجموع زمان</div></div>
-    <div class="summary-box"><div class="num">${fmtDuration(avgMinutes)}</div><div class="label">میانگین هر اتاق</div></div>
-    <div class="summary-box"><div class="num">${wwCount}</div><div class="label">اتاق WW</div></div>
-  `;
-
-  const tbody = document.querySelector("#daily-table tbody");
-  tbody.innerHTML = "";
-  for (const room of rooms) {
-    const log = logs.find(l => l.roomId === room.id);
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${room.roomNumber}${room.isWW ? " (WW)" : ""}</td>
-      <td>${STATUS_CONFIG[room.status].label}</td>
-      <td>${log ? log.startTime : "-"}</td>
-      <td>${log && log.endTime ? log.endTime : "-"}</td>
-      <td>${log && log.durationMinutes != null ? Math.round(log.durationMinutes) : "-"}</td>
-    `;
-    tbody.appendChild(row);
-  }
-}
-
-// ---------- Monthly report ----------
-async function renderMonthly() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const monthPrefix = `${year}-${String(month+1).padStart(2,"0")}`;
-
-  const allLogs = await db.logs.toArray();
-  const monthLogs = allLogs.filter(l => l.date.startsWith(monthPrefix) && l.endTime);
-
-  const totalRooms = monthLogs.length;
-  const totalMinutes = monthLogs.reduce((s,l) => s + l.durationMinutes, 0);
-  const avgMinutes = totalRooms ? totalMinutes / totalRooms : 0;
-
-  const allRoomsThisMonth = (await db.rooms.toArray()).filter(r => r.date.startsWith(monthPrefix));
-  const wwCount = allRoomsThisMonth.filter(r => r.isWW).length;
-
-  document.getElementById("monthly-summary").innerHTML = `
-    <div class="summary-box"><div class="num">${totalRooms}</div><div class="label">مجموع اتاق تمیزشده</div></div>
-    <div class="summary-box"><div class="num">${fmtDuration(totalMinutes)}</div><div class="label">مجموع زمان</div></div>
-    <div class="summary-box"><div class="num">${fmtDuration(avgMinutes)}</div><div class="label">میانگین هر اتاق</div></div>
-    <div class="summary-box"><div class="num">${wwCount}</div><div class="label">مجموع اتاق WW</div></div>
-  `;
-
+  // Daily breakdown
   const byDate = {};
-  for (const l of monthLogs) {
-    if (!byDate[l.date]) byDate[l.date] = { count: 0, minutes: 0 };
-    byDate[l.date].count += 1;
-    byDate[l.date].minutes += l.durationMinutes;
+  allRooms.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = [];
+    byDate[r.date].push(r);
+  });
+  const dateKeys = Object.keys(byDate).sort();
+  const dailyRows = dateKeys.map(dk => {
+    const s = computeStatsForRooms(byDate[dk]);
+    return `<tr>
+      <td>${parseDateKey(dk).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}</td>
+      <td>${s.totalCleaned}/${s.totalRooms}</td>
+      <td>${formatDuration(s.totalMs)}</td>
+      <td>${s.income.toFixed(2)} €</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="report-card">
+      <h3>Monatsbericht – ${monthLabel}</h3>
+      ${statBoxes(stats)}
+      ${renderCategoryTable(stats.categories)}
+    </div>
+    <div class="report-card">
+      <h3>Tägliche Übersicht</h3>
+      ${dateKeys.length === 0 ? '<p style="color:var(--muted);font-size:14px;">Keine Daten in diesem Monat.</p>' : `
+      <table class="report-table">
+        <thead><tr><th>Datum</th><th>Zimmer</th><th>Zeit</th><th>Verdienst</th></tr></thead>
+        <tbody>${dailyRows}</tbody>
+      </table>`}
+    </div>
+  `;
+}
+
+/* ---------- Year report ---------- */
+function renderYearReport() {
+  const d = parseDateKey(state.currentDate);
+  const year = d.getFullYear();
+
+  const allRooms = getRooms().filter(r => parseDateKey(r.date).getFullYear() === year);
+  const stats = computeStatsForRooms(allRooms);
+
+  const byMonth = {};
+  allRooms.forEach(r => {
+    const m = parseDateKey(r.date).getMonth();
+    if (!byMonth[m]) byMonth[m] = [];
+    byMonth[m].push(r);
+  });
+
+  const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  const monthRows = Object.keys(byMonth).sort((a, b) => a - b).map(m => {
+    const s = computeStatsForRooms(byMonth[m]);
+    return `<tr>
+      <td>${monthNames[m]}</td>
+      <td>${s.totalCleaned}/${s.totalRooms}</td>
+      <td>${formatDuration(s.totalMs)}</td>
+      <td>${s.income.toFixed(2)} €</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="report-card">
+      <h3>Jahresbericht – ${year}</h3>
+      ${statBoxes(stats)}
+      ${renderCategoryTable(stats.categories)}
+    </div>
+    <div class="report-card">
+      <h3>Monatliche Übersicht</h3>
+      ${monthRows === "" ? '<p style="color:var(--muted);font-size:14px;">Keine Daten in diesem Jahr.</p>' : `
+      <table class="report-table">
+        <thead><tr><th>Monat</th><th>Zimmer</th><th>Zeit</th><th>Verdienst</th></tr></thead>
+        <tbody>${monthRows}</tbody>
+      </table>`}
+    </div>
+  `;
+}
+
+/* ============================================================
+   Tab switching
+   ============================================================ */
+function renderTab() {
+  const roomsSection = document.querySelector(".rooms-section");
+  const shiftCard = document.getElementById("shiftCard");
+  const reportView = document.getElementById("reportView");
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === state.activeTab);
+  });
+
+  if (state.activeTab === "rooms") {
+    roomsSection.classList.remove("hidden");
+    shiftCard.classList.remove("hidden");
+    reportView.classList.add("hidden");
+    renderRoomList();
+  } else {
+    roomsSection.classList.add("hidden");
+    shiftCard.classList.add("hidden");
+    reportView.classList.remove("hidden");
+    if (state.activeTab === "day") reportView.innerHTML = renderDayReport();
+    if (state.activeTab === "month") reportView.innerHTML = renderMonthReport();
+    if (state.activeTab === "year") reportView.innerHTML = renderYearReport();
   }
+  updateFabVisibility();
+}
 
-  const tbody = document.querySelector("#monthly-table tbody");
-  tbody.innerHTML = "";
-  Object.keys(byDate).sort().reverse().forEach(date => {
-    const d = byDate[date];
-    const avg = d.count ? d.minutes / d.count : 0;
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${date}</td>
-      <td>${d.count}</td>
-      <td>${Math.round(d.minutes)}</td>
-      <td>${Math.round(avg)}</td>
-    `;
-    tbody.appendChild(row);
+/* ============================================================
+   Settings modal
+   ============================================================ */
+function openSettingsModal() {
+  const s = getSettings();
+  document.getElementById("inputWageNormal").value = s.wageNormal;
+  document.getElementById("inputWageSuite").value = s.wageSuite;
+  document.getElementById("settingsModal").classList.remove("hidden");
+}
+function closeSettingsModal() {
+  document.getElementById("settingsModal").classList.add("hidden");
+}
+function saveSettingsFromModal() {
+  const wageNormal = parseFloat(document.getElementById("inputWageNormal").value) || 0;
+  const wageSuite = parseFloat(document.getElementById("inputWageSuite").value) || 0;
+  setSettings({ wageNormal, wageSuite });
+  closeSettingsModal();
+  renderTab();
+  showToast("Einstellungen gespeichert.");
+}
+
+/* ---------- Export / Import ---------- */
+function exportData() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    rooms: getRooms(),
+    shifts: getShifts(),
+    locks: getLocks(),
+    settings: getSettings()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `reinigungsplaner-backup-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("Daten exportiert.");
+}
+
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.rooms) setRooms(data.rooms);
+      if (data.shifts) setShifts(data.shifts);
+      if (data.locks) setLocks(data.locks);
+      if (data.settings) setSettings(data.settings);
+      showToast("Daten erfolgreich importiert.");
+      renderAll();
+    } catch (err) {
+      showToast("Fehler beim Importieren der Datei.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ============================================================
+   Global render
+   ============================================================ */
+function renderAll() {
+  renderHeader();
+  renderShift();
+  renderTab();
+}
+
+/* ============================================================
+   Event bindings
+   ============================================================ */
+function bindEvents() {
+  document.getElementById("btnPrevDay").addEventListener("click", () => {
+    state.currentDate = shiftDate(state.currentDate, -1);
+    renderAll();
+  });
+  document.getElementById("btnNextDay").addEventListener("click", () => {
+    state.currentDate = shiftDate(state.currentDate, 1);
+    renderAll();
+  });
+  document.getElementById("btnToday").addEventListener("click", () => {
+    state.currentDate = todayStr();
+    renderAll();
+  });
+
+  document.getElementById("btnLock").addEventListener("click", () => {
+    const locked = isDayLocked(state.currentDate);
+    if (locked) {
+      setDayLocked(state.currentDate, false);
+      showToast("Tag entsperrt.");
+    } else {
+      if (confirm("Diesen Tag für Bearbeitung sperren?")) {
+        setDayLocked(state.currentDate, true);
+        showToast("Tag gesperrt.");
+      } else {
+        return;
+      }
+    }
+    renderAll();
+  });
+
+  document.getElementById("btnUnlock").addEventListener("click", () => {
+    setDayLocked(state.currentDate, false);
+    showToast("Bearbeitung entsperrt.");
+    renderAll();
+  });
+
+  document.getElementById("btnAddRoom").addEventListener("click", () => openRoomModal());
+  document.getElementById("btnCancelRoom").addEventListener("click", closeRoomModal);
+  document.getElementById("btnSaveRoom").addEventListener("click", saveRoomFromModal);
+  document.getElementById("btnDeleteRoom").addEventListener("click", () => {
+    if (confirm("Dieses Zimmer wirklich löschen?")) deleteRoomFromModal();
+  });
+  document.getElementById("inputIsSuite").addEventListener("change", toggleSuitePartnerField);
+
+  document.getElementById("roomList").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const card = e.target.closest(".room-card");
+    const id = card.dataset.id;
+    handleRoomAction(id, btn.dataset.action);
+  });
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.activeTab = btn.dataset.tab;
+      renderTab();
+    });
+  });
+
+  document.getElementById("btnKommen").addEventListener("click", () => {
+    saveShift(state.currentDate, { kommen: Date.now() });
+    renderShift();
+  });
+  document.getElementById("btnGehen").addEventListener("click", () => {
+    saveShift(state.currentDate, { gehen: Date.now() });
+    renderShift();
+  });
+
+  document.getElementById("btnSettings").addEventListener("click", openSettingsModal);
+  document.getElementById("btnCloseSettings").addEventListener("click", closeSettingsModal);
+  document.getElementById("btnSaveSettings").addEventListener("click", saveSettingsFromModal);
+  document.getElementById("btnExportData").addEventListener("click", exportData);
+  document.getElementById("inputImportFile").addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      if (confirm("Vorhandene Daten werden mit der importierten Datei überschrieben. Fortfahren?")) {
+        importData(e.target.files[0]);
+      }
+      e.target.value = "";
+    }
+  });
+
+  // Close modals on backdrop click
+  [document.getElementById("roomModal"), document.getElementById("settingsModal")].forEach(modal => {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.classList.add("hidden");
+    });
   });
 }
 
-// ---------- Service worker registration ----------
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(err => console.log("SW registration failed", err));
-  });
+/* ============================================================
+   Init
+   ============================================================ */
+function init() {
+  // Ensure default settings exist on first run
+  if (!localStorage.getItem(STORE_KEYS.settings)) {
+    setSettings({ ...DEFAULT_SETTINGS });
+  }
+  bindEvents();
+  renderAll();
+  startTimerLoop();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
 }
 
-// ---------- Initial render ----------
-renderRooms();
+document.addEventListener("DOMContentLoaded", init);

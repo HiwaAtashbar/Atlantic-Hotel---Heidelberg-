@@ -1,48 +1,129 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#2b6cb0">
-<title>ثبت نظافت اتاق‌ها</title>
+<meta name="theme-color" content="#2563eb">
+<title>Reinigungsplaner</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
-<script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
 </head>
 <body>
-<header>ثبت نظافت اتاق‌ها</header>
-<nav>
-  <button id="tab-rooms" class="active">اتاق‌های امروز</button>
-  <button id="tab-daily">گزارش روزانه</button>
-  <button id="tab-monthly">گزارش ماهانه</button>
+
+<header class="app-header">
+  <div class="header-top">
+    <h1>Reinigungsplaner</h1>
+    <div class="header-actions">
+      <button id="btnSettings" class="icon-btn" title="Einstellungen">⚙️</button>
+      <button id="btnLock" class="icon-btn" title="Tag sperren/entsperren">🔒</button>
+    </div>
+  </div>
+  <div class="date-nav">
+    <button id="btnPrevDay" class="nav-btn">◀</button>
+    <div class="current-date" id="currentDateLabel">Heute</div>
+    <button id="btnNextDay" class="nav-btn">▶</button>
+    <button id="btnToday" class="today-btn" title="Zu heute springen">Heute</button>
+  </div>
+</header>
+
+<div id="lockBanner" class="lock-banner hidden">
+  <span>🔒 Dieser Tag ist gesperrt.</span>
+  <button id="btnUnlock" class="link-btn">Bearbeitung entsperren</button>
+</div>
+
+<main>
+  <section class="shift-card" id="shiftCard">
+    <h2>Arbeitszeit</h2>
+    <div class="shift-row">
+      <button id="btnKommen" class="shift-btn kommen">Kommen</button>
+      <button id="btnGehen" class="shift-btn gehen">Gehen</button>
+    </div>
+    <div class="shift-info" id="shiftInfo">–</div>
+  </section>
+
+  <section class="rooms-section">
+    <div class="section-header">
+      <h2>Zimmer</h2>
+      <span class="room-count" id="roomCount">0 Zimmer</span>
+    </div>
+    <div id="roomList" class="room-list"></div>
+    <div id="emptyState" class="empty-state hidden">Keine Zimmer für diesen Tag eingetragen.</div>
+  </section>
+</main>
+
+<button id="btnAddRoom" class="fab" title="Zimmer hinzufügen">+</button>
+
+<nav class="bottom-tabs">
+  <button class="tab-btn active" data-tab="rooms">Zimmer</button>
+  <button class="tab-btn" data-tab="day">Tag</button>
+  <button class="tab-btn" data-tab="month">Monat</button>
+  <button class="tab-btn" data-tab="year">Jahr</button>
 </nav>
 
-<main id="view-rooms">
-  <div id="rooms-list"></div>
-</main>
+<div id="reportView" class="report-view hidden"></div>
 
-<main id="view-daily" style="display:none">
-  <div class="summary-grid" id="daily-summary"></div>
-  <div class="section-title">جزئیات اتاق‌های امروز</div>
-  <table class="report-table" id="daily-table">
-    <thead><tr><th>اتاق</th><th>وضعیت</th><th>شروع</th><th>پایان</th><th>مدت (دقیقه)</th></tr></thead>
-    <tbody></tbody>
-  </table>
-</main>
+<!-- Room Add/Edit Modal -->
+<div id="roomModal" class="modal hidden">
+  <div class="modal-content">
+    <h3 id="roomModalTitle">Zimmer hinzufügen</h3>
+    <label>Zimmernummer
+      <input type="text" id="inputRoomNumber" placeholder="z. B. 214">
+    </label>
+    <label>Status
+      <select id="inputStatus">
+        <option value="blue">🔵 Abreise – neu vermietet (Priorität 1)</option>
+        <option value="red">🔴 Abreise – nicht vermietet</option>
+        <option value="yellow">🟡 Bleibt (Aufenthalt)</option>
+      </select>
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="inputWW">
+      WW – Kompletter Wäschewechsel
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="inputIsSuite">
+      Doppelzimmer-Suite (2 Zimmer)
+    </label>
+    <label id="suitePartnerWrap" class="hidden">Zweite Zimmernummer der Suite
+      <input type="text" id="inputSuitePartner" placeholder="z. B. 215">
+    </label>
+    <div class="modal-actions">
+      <button id="btnDeleteRoom" class="btn danger hidden">Löschen</button>
+      <button id="btnCancelRoom" class="btn secondary">Abbrechen</button>
+      <button id="btnSaveRoom" class="btn primary">Speichern</button>
+    </div>
+  </div>
+</div>
 
-<main id="view-monthly" style="display:none">
-  <div class="summary-grid" id="monthly-summary"></div>
-  <div class="section-title">تفکیک روزانه این ماه</div>
-  <table class="report-table" id="monthly-table">
-    <thead><tr><th>تاریخ</th><th>تعداد اتاق</th><th>مجموع دقیقه</th><th>میانگین دقیقه</th></tr></thead>
-    <tbody></tbody>
-  </table>
-</main>
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Einstellungen</h3>
+    <label>Lohn pro normalem Zimmer (€)
+      <input type="number" step="0.1" id="inputWageNormal">
+    </label>
+    <label>Lohn pro Doppelzimmer-Suite (€)
+      <input type="number" step="0.1" id="inputWageSuite">
+    </label>
+    <div class="settings-divider"></div>
+    <h4>Daten sichern</h4>
+    <div class="modal-actions column">
+      <button id="btnExportData" class="btn secondary full">Daten exportieren</button>
+      <label class="btn secondary full file-label">
+        Daten importieren
+        <input type="file" id="inputImportFile" accept="application/json" class="hidden">
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button id="btnCloseSettings" class="btn secondary">Schließen</button>
+      <button id="btnSaveSettings" class="btn primary">Speichern</button>
+    </div>
+  </div>
+</div>
 
-<button class="fab" id="add-room-btn">＋</button>
-
-<div id="modal-root"></div>
+<div id="toast" class="toast hidden"></div>
 
 <script src="app.js"></script>
 </body>
