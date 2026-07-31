@@ -182,6 +182,32 @@ function renderShift() {
   }
 }
 
+function openShiftModal() {
+  const shift = getShiftForDate(state.currentDate);
+  document.getElementById("inputKommenTime").value = timeInputValue(shift?.kommen);
+  document.getElementById("inputGehenTime").value = timeInputValue(shift?.gehen);
+  document.getElementById("shiftModal").classList.remove("hidden");
+}
+function closeShiftModal() {
+  document.getElementById("shiftModal").classList.add("hidden");
+}
+function saveShiftFromModal() {
+  const kommenVal = document.getElementById("inputKommenTime").value.trim();
+  const gehenVal = document.getElementById("inputGehenTime").value.trim();
+  const kommenTs = kommenVal ? timeInputToTimestamp(state.currentDate, kommenVal) : null;
+  const gehenTs = gehenVal ? timeInputToTimestamp(state.currentDate, gehenVal) : null;
+
+  if (kommenTs && gehenTs && gehenTs < kommenTs) {
+    showToast("Gehen darf nicht vor Kommen liegen.");
+    return;
+  }
+
+  saveShift(state.currentDate, { kommen: kommenTs, gehen: gehenTs });
+  closeShiftModal();
+  renderAll();
+  showToast("Arbeitszeit gespeichert.");
+}
+
 /* ============================================================
    RENDER: Room list
    ============================================================ */
@@ -294,6 +320,22 @@ function roomNumberExistsOnDate(number, dateKey, excludeId) {
   return getRooms().some(r => r.date === dateKey && r.number === number && r.id !== excludeId);
 }
 
+function timeInputValue(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+function timeInputToTimestamp(dateKey, timeStr) {
+  if (!timeStr) return null;
+  const parts = timeStr.split(":").map(Number);
+  const [y, mo, da] = dateKey.split("-").map(Number);
+  const d = new Date(y, mo - 1, da, parts[0] || 0, parts[1] || 0, parts[2] || 0);
+  return d.getTime();
+}
+
 function openRoomModal(roomId = null) {
   state.editingRoomId = roomId;
   const modal = document.getElementById("roomModal");
@@ -304,6 +346,8 @@ function openRoomModal(roomId = null) {
   const suiteInput = document.getElementById("inputIsSuite");
   const suitePartnerInput = document.getElementById("inputSuitePartner");
   const deleteBtn = document.getElementById("btnDeleteRoom");
+  const startInput = document.getElementById("inputStartTime");
+  const endInput = document.getElementById("inputEndTime");
 
   if (roomId) {
     const room = findRoom(roomId);
@@ -313,6 +357,8 @@ function openRoomModal(roomId = null) {
     wwInput.checked = !!room.ww;
     suiteInput.checked = !!room.isSuite;
     suitePartnerInput.value = room.suitePartner || "";
+    if (startInput) startInput.value = timeInputValue(room.startTime);
+    if (endInput) endInput.value = timeInputValue(room.endTime);
     deleteBtn.classList.remove("hidden");
   } else {
     title.textContent = "Zimmer hinzufügen";
@@ -321,6 +367,8 @@ function openRoomModal(roomId = null) {
     wwInput.checked = false;
     suiteInput.checked = false;
     suitePartnerInput.value = "";
+    if (startInput) startInput.value = "";
+    if (endInput) endInput.value = "";
     deleteBtn.classList.add("hidden");
   }
   toggleSuitePartnerField();
@@ -344,6 +392,10 @@ function saveRoomFromModal() {
   const ww = document.getElementById("inputWW").checked;
   const isSuite = document.getElementById("inputIsSuite").checked;
   const suitePartner = document.getElementById("inputSuitePartner").value.trim();
+  const startInput = document.getElementById("inputStartTime");
+  const endInput = document.getElementById("inputEndTime");
+  const startVal = startInput ? startInput.value : "";
+  const endVal = endInput ? endInput.value : "";
 
   if (!number) {
     showToast("Bitte eine Zimmernummer eingeben.");
@@ -356,6 +408,13 @@ function saveRoomFromModal() {
   }
 
   const rooms = getRooms();
+  const newStartTime = startVal ? timeInputToTimestamp(state.currentDate, startVal) : null;
+  const newEndTime = endVal ? timeInputToTimestamp(state.currentDate, endVal) : null;
+
+  if (newStartTime && newEndTime && newEndTime < newStartTime) {
+    showToast("Endzeit darf nicht vor der Startzeit liegen.");
+    return;
+  }
 
   if (state.editingRoomId) {
     const room = rooms.find(r => r.id === state.editingRoomId);
@@ -366,6 +425,8 @@ function saveRoomFromModal() {
     room.suitePartner = isSuite ? suitePartner : "";
     if (isSuite && !room.suiteGroup) room.suiteGroup = uuid();
     if (!isSuite) room.suiteGroup = null;
+    room.startTime = newStartTime;
+    room.endTime = newEndTime;
   } else {
     rooms.push({
       id: uuid(),
@@ -376,8 +437,8 @@ function saveRoomFromModal() {
       isSuite,
       suitePartner: isSuite ? suitePartner : "",
       suiteGroup: isSuite ? uuid() : null,
-      startTime: null,
-      endTime: null,
+      startTime: newStartTime,
+      endTime: newEndTime,
       createdAt: Date.now()
     });
   }
@@ -401,15 +462,18 @@ function handleRoomAction(id, action) {
   const rooms = getRooms();
   const room = rooms.find(r => r.id === id);
   if (!room) return;
+
+  if (action === "edit") {
+    openRoomModal(id);
+    return;
+  }
+
   if (isDayLocked(state.currentDate)) return;
 
   if (action === "start") {
     room.startTime = Date.now();
   } else if (action === "end") {
     room.endTime = Date.now();
-  } else if (action === "edit") {
-    openRoomModal(id);
-    return;
   }
   setRooms(rooms);
   renderRoomList();
@@ -485,18 +549,10 @@ function renderCategoryTable(categories) {
       <td>${c.cleaned > 0 ? formatDuration(avg) : "–"}</td>
     </tr>`;
   }).join("");
-  const ww = categories.ww;
-  const wwAvg = ww.cleaned > 0 ? ww.totalMs / ww.cleaned : 0;
-  const wwRow = `<tr>
-    <td><span class="dot ww"></span>WW</td>
-    <td>${ww.count}</td>
-    <td>${ww.cleaned}</td>
-    <td>${ww.cleaned > 0 ? formatDuration(wwAvg) : "–"}</td>
-  </tr>`;
 
   return `<table class="report-table">
     <thead><tr><th>Kategorie</th><th>Anzahl</th><th>Erledigt</th><th>Ø Zeit</th></tr></thead>
-    <tbody>${rows}${wwRow}</tbody>
+    <tbody>${rows}</tbody>
   </table>`;
 }
 
@@ -513,6 +569,13 @@ function statBoxes(stats) {
 function renderDayReport() {
   const rooms = getRoomsForDate(state.currentDate);
   const stats = computeStatsForRooms(rooms);
+  const shift = getShiftForDate(state.currentDate);
+  const kommen = shift?.kommen || null;
+  const gehen = shift?.gehen || null;
+  const attendanceMs = (kommen && gehen) ? (gehen - kommen) : null;
+  const cleaningMs = stats.totalMs;
+  const idleMs = (attendanceMs != null) ? Math.max(attendanceMs - cleaningMs, 0) : null;
+
   return `
     <div class="report-card">
       <h3>Tagesbericht – ${formatDateLabel(state.currentDate)}</h3>
@@ -521,6 +584,17 @@ function renderDayReport() {
         ${stats.normalCount} normale Zimmer × ${getSettings().wageNormal.toFixed(2)} € · ${stats.suiteCount} Suite(n) × ${getSettings().wageSuite.toFixed(2)} €
       </div>
       ${renderCategoryTable(stats.categories)}
+    </div>
+    <div class="report-card">
+      <h3>Anwesenheit vs. Reinigungszeit</h3>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-value">${attendanceMs != null ? formatDuration(attendanceMs) : "–"}</div><div class="stat-label">Anwesenheit im Hotel</div></div>
+        <div class="stat-box"><div class="stat-value">${formatDuration(cleaningMs)}</div><div class="stat-label">Reine Reinigungszeit</div></div>
+        <div class="stat-box"><div class="stat-value">${idleMs != null ? formatDuration(idleMs) : "–"}</div><div class="stat-label">Leerlauf-/Pausenzeit</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;">
+        Kommen: ${formatTime(kommen)} · Gehen: ${formatTime(gehen)}
+      </div>
     </div>
   `;
 }
@@ -783,6 +857,9 @@ function bindEvents() {
     saveShift(state.currentDate, { gehen: Date.now() });
     renderShift();
   });
+  document.getElementById("btnEditShift").addEventListener("click", openShiftModal);
+  document.getElementById("btnCancelShift").addEventListener("click", closeShiftModal);
+  document.getElementById("btnSaveShift").addEventListener("click", saveShiftFromModal);
 
   document.getElementById("btnSettings").addEventListener("click", openSettingsModal);
   document.getElementById("btnCloseSettings").addEventListener("click", closeSettingsModal);
@@ -798,7 +875,7 @@ function bindEvents() {
   });
 
   // Close modals on backdrop click
-  [document.getElementById("roomModal"), document.getElementById("settingsModal")].forEach(modal => {
+  [document.getElementById("roomModal"), document.getElementById("settingsModal"), document.getElementById("shiftModal")].forEach(modal => {
     modal.addEventListener("click", (e) => {
       if (e.target === modal) modal.classList.add("hidden");
     });
