@@ -436,3 +436,6 @@ table.report-table th { color: var(--muted); font-weight: 600; }
   max-width: 90%;
   text-align: center;
 }
+
+.clickable-row { cursor: pointer; }
+.clickable-row:active { background: rgba(37,99,235,0.08); }

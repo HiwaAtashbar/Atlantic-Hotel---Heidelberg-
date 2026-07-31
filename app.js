@@ -246,7 +246,7 @@ function renderRoomList() {
     card.dataset.id = room.id;
 
     const badges = [];
-    if (room.isSuite) badges.push(`<span class="badge suite">Suite${room.suitePartner ? " · " + room.suitePartner : ""}</span>`);
+    if (room.isSuite) badges.push(`<span class="badge suite">Suite</span>`);
     if (room.ww) badges.push(`<span class="badge ww">WW</span>`);
     badges.push(`<span class="badge">${STATUS_CONFIG[room.status].short}</span>`);
 
@@ -344,7 +344,6 @@ function openRoomModal(roomId = null) {
   const statusInput = document.getElementById("inputStatus");
   const wwInput = document.getElementById("inputWW");
   const suiteInput = document.getElementById("inputIsSuite");
-  const suitePartnerInput = document.getElementById("inputSuitePartner");
   const deleteBtn = document.getElementById("btnDeleteRoom");
   const startInput = document.getElementById("inputStartTime");
   const endInput = document.getElementById("inputEndTime");
@@ -356,7 +355,6 @@ function openRoomModal(roomId = null) {
     statusInput.value = room.status;
     wwInput.checked = !!room.ww;
     suiteInput.checked = !!room.isSuite;
-    suitePartnerInput.value = room.suitePartner || "";
     if (startInput) startInput.value = timeInputValue(room.startTime);
     if (endInput) endInput.value = timeInputValue(room.endTime);
     deleteBtn.classList.remove("hidden");
@@ -366,12 +364,10 @@ function openRoomModal(roomId = null) {
     statusInput.value = "blue";
     wwInput.checked = false;
     suiteInput.checked = false;
-    suitePartnerInput.value = "";
     if (startInput) startInput.value = "";
     if (endInput) endInput.value = "";
     deleteBtn.classList.add("hidden");
   }
-  toggleSuitePartnerField();
   modal.classList.remove("hidden");
   numberInput.focus();
 }
@@ -381,17 +377,12 @@ function closeRoomModal() {
   state.editingRoomId = null;
 }
 
-function toggleSuitePartnerField() {
-  const isSuite = document.getElementById("inputIsSuite").checked;
-  document.getElementById("suitePartnerWrap").classList.toggle("hidden", !isSuite);
-}
 
 function saveRoomFromModal() {
   const number = document.getElementById("inputRoomNumber").value.trim();
   const status = document.getElementById("inputStatus").value;
   const ww = document.getElementById("inputWW").checked;
   const isSuite = document.getElementById("inputIsSuite").checked;
-  const suitePartner = document.getElementById("inputSuitePartner").value.trim();
   const startInput = document.getElementById("inputStartTime");
   const endInput = document.getElementById("inputEndTime");
   const startVal = startInput ? startInput.value : "";
@@ -422,7 +413,6 @@ function saveRoomFromModal() {
     room.status = status;
     room.ww = ww;
     room.isSuite = isSuite;
-    room.suitePartner = isSuite ? suitePartner : "";
     if (isSuite && !room.suiteGroup) room.suiteGroup = uuid();
     if (!isSuite) room.suiteGroup = null;
     room.startTime = newStartTime;
@@ -435,7 +425,6 @@ function saveRoomFromModal() {
       status,
       ww,
       isSuite,
-      suitePartner: isSuite ? suitePartner : "",
       suiteGroup: isSuite ? uuid() : null,
       startTime: newStartTime,
       endTime: newEndTime,
@@ -649,11 +638,12 @@ function renderMonthReport() {
   const dateKeys = Object.keys(byDate).sort();
   const dailyRows = dateKeys.map(dk => {
     const s = computeStatsForRooms(byDate[dk]);
-    return `<tr>
+    return `<tr class="clickable-row" data-navigate-date="${dk}">
       <td>${parseDateKey(dk).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}</td>
       <td>${s.totalCleaned}/${s.totalRooms}</td>
       <td>${formatDuration(s.totalMs)}</td>
       <td>${s.income.toFixed(2)} €</td>
+      <td>✏️</td>
     </tr>`;
   }).join("");
 
@@ -668,9 +658,10 @@ function renderMonthReport() {
     </div>
     <div class="report-card">
       <h3>Tägliche Übersicht</h3>
+      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:10px;">Auf einen Tag tippen, um die Zimmer dieses Tages zu bearbeiten.</p>
       ${dateKeys.length === 0 ? '<p style="color:var(--muted);font-size:14px;">Keine Daten in diesem Monat.</p>' : `
       <table class="report-table">
-        <thead><tr><th>Datum</th><th>Zimmer</th><th>Zeit</th><th>Verdienst</th></tr></thead>
+        <thead><tr><th>Datum</th><th>Zimmer</th><th>Zeit</th><th>Verdienst</th><th></th></tr></thead>
         <tbody>${dailyRows}</tbody>
       </table>`}
     </div>
@@ -695,11 +686,13 @@ function renderYearReport() {
   const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
   const monthRows = Object.keys(byMonth).sort((a, b) => a - b).map(m => {
     const s = computeStatsForRooms(byMonth[m]);
-    return `<tr>
+    const monthKey = `${year}-${String(Number(m) + 1).padStart(2, "0")}`;
+    return `<tr class="clickable-row" data-navigate-month="${monthKey}">
       <td>${monthNames[m]}</td>
       <td>${s.totalCleaned}/${s.totalRooms}</td>
       <td>${formatDuration(s.totalMs)}</td>
       <td>${s.income.toFixed(2)} €</td>
+      <td>✏️</td>
     </tr>`;
   }).join("");
 
@@ -714,9 +707,10 @@ function renderYearReport() {
     </div>
     <div class="report-card">
       <h3>Monatliche Übersicht</h3>
+      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:10px;">Auf einen Monat tippen, um dessen Tage einzeln zu sehen und zu bearbeiten.</p>
       ${monthRows === "" ? '<p style="color:var(--muted);font-size:14px;">Keine Daten in diesem Jahr.</p>' : `
       <table class="report-table">
-        <thead><tr><th>Monat</th><th>Zimmer</th><th>Zeit</th><th>Verdienst</th></tr></thead>
+        <thead><tr><th>Monat</th><th>Zimmer</th><th>Zeit</th><th>Verdienst</th><th></th></tr></thead>
         <tbody>${monthRows}</tbody>
       </table>`}
     </div>
@@ -880,6 +874,24 @@ function bindEvents() {
       state.activeTab = btn.dataset.tab;
       renderTab();
     });
+  });
+
+  document.getElementById("reportView").addEventListener("click", (e) => {
+    const dayRow = e.target.closest("[data-navigate-date]");
+    if (dayRow) {
+      state.currentDate = dayRow.dataset.navigateDate;
+      state.activeTab = "rooms";
+      renderAll();
+      return;
+    }
+    const monthRow = e.target.closest("[data-navigate-month]");
+    if (monthRow) {
+      const [y, m] = monthRow.dataset.navigateMonth.split("-").map(Number);
+      state.currentDate = formatDateKey(new Date(y, m - 1, 1));
+      state.activeTab = "month";
+      renderAll();
+      return;
+    }
   });
 
   document.getElementById("btnKommen").addEventListener("click", () => {
