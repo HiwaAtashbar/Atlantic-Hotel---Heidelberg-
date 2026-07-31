@@ -556,6 +556,33 @@ function renderCategoryTable(categories) {
   </table>`;
 }
 
+function renderWageTable(stats) {
+  const settings = getSettings();
+  const normalTotal = stats.normalCount * settings.wageNormal;
+  const suiteTotal = stats.suiteCount * settings.wageSuite;
+  return `<table class="report-table">
+    <thead><tr><th>Verdienst-Kategorie</th><th>Anzahl</th><th>Lohn/Stück</th><th>Gesamt</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Normale Zimmer</td>
+        <td>${stats.normalCount}</td>
+        <td>${settings.wageNormal.toFixed(2)} €</td>
+        <td>${normalTotal.toFixed(2)} €</td>
+      </tr>
+      <tr>
+        <td>Suiten (2 Zimmer)</td>
+        <td>${stats.suiteCount}</td>
+        <td>${settings.wageSuite.toFixed(2)} €</td>
+        <td>${suiteTotal.toFixed(2)} €</td>
+      </tr>
+      <tr style="font-weight:700;">
+        <td colspan="3">Gesamtverdienst</td>
+        <td>${stats.income.toFixed(2)} €</td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+
 function statBoxes(stats) {
   return `<div class="stat-grid">
     <div class="stat-box"><div class="stat-value">${stats.totalCleaned}/${stats.totalRooms}</div><div class="stat-label">Zimmer erledigt</div></div>
@@ -580,10 +607,10 @@ function renderDayReport() {
     <div class="report-card">
       <h3>Tagesbericht – ${formatDateLabel(state.currentDate)}</h3>
       ${statBoxes(stats)}
-      <div style="font-size:13px;color:var(--muted);margin-top:6px;">
-        ${stats.normalCount} normale Zimmer × ${getSettings().wageNormal.toFixed(2)} € · ${stats.suiteCount} Suite(n) × ${getSettings().wageSuite.toFixed(2)} €
-      </div>
+      <h4 style="margin:14px 0 6px;font-size:14px;color:var(--muted);">Reinigungszeit nach Farbe</h4>
       ${renderCategoryTable(stats.categories)}
+      <h4 style="margin:14px 0 6px;font-size:14px;color:var(--muted);">Verdienst nach Zimmertyp</h4>
+      ${renderWageTable(stats)}
     </div>
     <div class="report-card">
       <h3>Anwesenheit vs. Reinigungszeit</h3>
@@ -634,7 +661,10 @@ function renderMonthReport() {
     <div class="report-card">
       <h3>Monatsbericht – ${monthLabel}</h3>
       ${statBoxes(stats)}
+      <h4 style="margin:14px 0 6px;font-size:14px;color:var(--muted);">Reinigungszeit nach Farbe</h4>
       ${renderCategoryTable(stats.categories)}
+      <h4 style="margin:14px 0 6px;font-size:14px;color:var(--muted);">Verdienst nach Zimmertyp</h4>
+      ${renderWageTable(stats)}
     </div>
     <div class="report-card">
       <h3>Tägliche Übersicht</h3>
@@ -677,7 +707,10 @@ function renderYearReport() {
     <div class="report-card">
       <h3>Jahresbericht – ${year}</h3>
       ${statBoxes(stats)}
+      <h4 style="margin:14px 0 6px;font-size:14px;color:var(--muted);">Reinigungszeit nach Farbe</h4>
       ${renderCategoryTable(stats.categories)}
+      <h4 style="margin:14px 0 6px;font-size:14px;color:var(--muted);">Verdienst nach Zimmertyp</h4>
+      ${renderWageTable(stats)}
     </div>
     <div class="report-card">
       <h3>Monatliche Übersicht</h3>

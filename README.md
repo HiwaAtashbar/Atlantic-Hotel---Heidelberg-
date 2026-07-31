@@ -1,45 +1,37 @@
-# Reinigungsplaner – Aktualisierte Version (Juli 2026)
+# Reinigungsplaner – Update (31.07.2026, Version 3)
 
 ## Neue Änderungen in diesem Update
 
-1. **Alle Daten jederzeit editierbar, auch an gesperrten Tagen**
-   Der Bearbeiten-Button (✏️) bei jedem Zimmer funktioniert jetzt IMMER, unabhängig davon, ob der Tag über 🔒 gesperrt wurde. Die Sperre verhindert nur das Starten/Beenden neuer Reinigungen sowie das Hinzufügen neuer Zimmer, nicht aber das Korrigieren bereits vorhandener Einträge.
+1. **Zweite Zimmernummer der Suite ist optional**
+   Das Feld "Zweite Zimmernummer der Suite" war bereits technisch optional (die App speichert auch, wenn es leer bleibt) – der Hinweistext wurde jetzt zusätzlich mit "(optional)" ergänzt, damit klar ist, dass eine Eingabe hier nicht zwingend erforderlich ist.
 
-2. **Start- und Endzeit der Reinigung manuell editierbar**
-   Im Bearbeiten-Fenster jedes Zimmers gibt es jetzt zwei neue Felder "Startzeit" und "Endzeit" (Format HH:MM:SS), mit denen Sie die tatsächliche Reinigungszeit nachträglich korrigieren können, falls sie falsch erfasst wurde.
+2. **Neue Verdienst-Tabelle in allen drei Berichten (Tag/Monat/Jahr)**
+   Zusätzlich zur bestehenden Tabelle "Reinigungszeit nach Farbe" (Blau/Rot/Gelb – für die Gesamtzeitberechnung) gibt es jetzt eine zweite, getrennte Tabelle "Verdienst nach Zimmertyp" mit genau zwei Zeilen:
+   - Normale Zimmer (Anzahl × Lohn pro normalem Zimmer)
+   - Suiten (2 Zimmer) (Anzahl × Lohn pro Suite, standardmäßig 6,50 € statt 5,00 €)
+   - Eine Gesamtzeile mit dem kompletten Verdienst
 
-3. **Arbeitszeit (Kommen/Gehen) manuell editierbar**
-   Über den neuen Link "Bearbeiten" oben rechts in der Arbeitszeit-Karte öffnet sich ein Fenster, in dem Sie Kommen- und Gehen-Zeit direkt eingeben oder korrigieren können – unabhängig vom Sperrstatus des Tages.
+   Dadurch bleibt die Farb-Tabelle (Blau/Rot/Gelb) weiterhin für die Berechnung der gesamten Reinigungszeit erhalten, während der Verdienst separat und korrekt nach Zimmertyp (normal vs. Suite) berechnet wird – unabhängig vom Status (Blau/Rot/Gelb) des Zimmers.
 
-4. **WW-Zimmer ohne eigene Zeile in den Berichten**
-   In den Tabellen "Aufschlüsselung nach Kategorie" (Tag/Monat/Jahr) gibt es jetzt nur noch drei Zeilen: Blau, Rot, Gelb. WW-Zimmer werden weiterhin mit dem lila WW-Badge auf der Zimmerkarte gekennzeichnet, erscheinen aber in der Statistik automatisch in der Zeile ihrer Farbe (meist Gelb) – keine separate WW-Zeile mehr.
+## Warum zwei getrennte Tabellen?
 
-5. **Tagesbericht zeigt Anwesenheit UND reine Reinigungszeit**
-   Im Tab "Tag" gibt es eine neue Karte "Anwesenheit vs. Reinigungszeit" mit drei Werten:
-   - Anwesenheit im Hotel (Kommen bis Gehen)
-   - Reine Reinigungszeit (Summe aller Start-Ende-Zeiten der Zimmer)
-   - Leerlauf-/Pausenzeit (automatisch berechnet: Anwesenheit minus Reinigungszeit)
+- Die **Farb-Tabelle** beantwortet: Wie viele Zimmer welcher Kategorie wurden gereinigt und wie lange hat es gedauert?
+- Die **Verdienst-Tabelle** beantwortet: Wie viel Geld wurde verdient – abhängig davon, ob ein Zimmer ein normales Zimmer oder eine Suite war (Suiten zahlen unabhängig von ihrer Farbe immer den höheren Suite-Lohn).
 
-   So sehen Sie sofort, wie viel Zeit für Pausen, Wagen-/Werkzeug-Transport oder andere Tätigkeiten außerhalb der reinen Zimmerreinigung verwendet wurde.
-
-## Wie Sie einen Fehler nachträglich korrigieren
-
-- Zum betreffenden Tag navigieren (Pfeile ◀ ▶ im Header, egal ob Vergangenheit oder Zukunft).
-- Beim Zimmer auf ✏️ (Bearbeiten) klicken, um Zimmernummer, Status, WW, Suite, Startzeit oder Endzeit zu ändern.
-- Für Kommen/Gehen: In der Arbeitszeit-Karte auf "Bearbeiten" klicken.
-- Diese Funktionen sind immer verfügbar, auch bei gesperrten Tagen.
-
-## Installation auf dem Handy
+## Installation
 
 1. Alle Dateien in Ihr GitHub-Repository hochladen (bestehende Dateien überschreiben).
 2. GitHub Pages aktualisiert sich automatisch nach ein bis zwei Minuten.
-3. Die installierte App auf dem Handy schließen und neu öffnen, damit die neue Version geladen wird (der Service Worker cached die App, daher ggf. Browser-/App-Cache leeren, falls die Änderungen nicht sofort sichtbar sind).
+3. App auf dem Handy schließen und neu öffnen. Falls Änderungen nicht sofort sichtbar sind, Browser-/App-Cache leeren (Service Worker cached die Dateien).
+
+## Frühere Änderungen (bereits enthalten)
+
+- Alle Daten (Zimmer, Zeiten, Kommen/Gehen) sind jederzeit editierbar, auch an gesperrten Tagen.
+- Start-/Endzeit der Reinigung manuell im Bearbeiten-Fenster editierbar.
+- Kommen-/Gehen-Zeit über "Bearbeiten"-Link in der Arbeitszeit-Karte editierbar.
+- WW-Zimmer haben keine eigene Zeile mehr in der Farb-Tabelle, sondern werden in ihrer jeweiligen Farbzeile mitgezählt (WW-Badge bleibt auf der Zimmerkarte sichtbar).
+- Tagesbericht zeigt zusätzlich Anwesenheitszeit im Hotel, reine Reinigungszeit und automatisch berechnete Leerlauf-/Pausenzeit.
 
 ## Dateistruktur
 
-- index.html – Seitenstruktur inkl. neuer Felder für Zeiten und Arbeitszeit-Bearbeitung
-- app.js – Programmlogik inkl. neuer Bearbeitungsfunktionen und Tagesbericht-Erweiterung
-- styles.css – Design (unverändert)
-- manifest.json – PWA-Einstellungen
-- sw.js – Service Worker für Offline-Funktion
-- icon-192.png / icon-512.png – App-Icons
+- index.html, app.js, styles.css, manifest.json, sw.js, icon-192.png, icon-512.png, README.md
